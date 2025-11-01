@@ -30,6 +30,10 @@ ALLOWED_HOSTS = []
 
 # Application definition
 
+DOMAIN_APPS = [
+    "apps.orders",
+]
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -38,6 +42,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 ]
+
+INSTALLED_APPS += DOMAIN_APPS
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
