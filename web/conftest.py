@@ -1,0 +1,9 @@
+# Asegura que 'orders' (dentro de web/apps) sea importable antes de colección
+import sys
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent  # .../web
+APPS_DIR = BASE_DIR / "apps"
+p = str(APPS_DIR)
+if p not in sys.path:
+    sys.path.insert(0, p)
