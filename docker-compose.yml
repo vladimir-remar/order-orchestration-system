@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  inventory:
+    build: ./services/inventory
+    ports:
+      - "9001:9001"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001"]
+
+  payments:
+    build: ./services/payments
+    ports:
+      - "9002:9002"
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9002"]
