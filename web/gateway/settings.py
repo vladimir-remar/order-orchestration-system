@@ -35,6 +35,7 @@ ALLOWED_HOSTS = ["*"]
 
 DOMAIN_APPS = [
     "orders",
+    "monitoring",
 ]
 
 INSTALLED_APPS = [
