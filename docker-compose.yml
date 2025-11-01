@@ -7,21 +7,31 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
     ports:
-      - "5432:5432"
+      - "5434:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d orders"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   web:
     build: ./web
-    depends_on: [db]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./.env
     environment:
       DJANGO_SETTINGS_MODULE: gateway.settings
-      POSTGRES_DB: orders
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_HOST: db
-      POSTGRES_PORT: "5432"
       DEBUG: "1"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: "${POSTGRES_PORT}"
+      DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY}"
     ports:
       - "8000:8000"
     command: >
