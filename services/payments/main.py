@@ -7,6 +7,10 @@ is delegated to the SQLAlchemy-backed repository in ``repo.PaymentsRepo``.
 
 import uuid
 import logging
+import time
+from sqlalchemy import text
+from repo import init_db, engine
+
 from fastapi import Request
 from pythonjsonlogger import jsonlogger
 
@@ -23,6 +27,21 @@ from pydantic import BaseModel, Field, constr
 app = FastAPI(title="Payments Service")
 
 Currency = constr(pattern=r"^[A-Z]{3}$")
+@app.on_event("startup")
+def _startup_db():
+    # espera activa breve hasta que la DB acepte conexiones
+    deadline = time.time() + 30  # 30s
+    while True:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("select 1"))
+            break
+        except Exception:
+            if time.time() > deadline:
+                raise
+            time.sleep(1)
+    init_db()
+
 
 logger = logging.getLogger("payments")
 if not logger.handlers:

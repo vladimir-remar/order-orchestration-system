@@ -29,7 +29,9 @@ class Stock(Base):
     sku = mapped_column(String(64), primary_key=True)
     quantity = mapped_column(Integer, nullable=False, default=0)
 
-Base.metadata.create_all(engine)
+def init_db():
+    # crea tablas si no existen
+    Base.metadata.create_all(engine)
 
 @contextmanager
 def get_session():

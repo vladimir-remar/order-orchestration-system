@@ -153,4 +153,6 @@ class PaymentsRepo:
             s.commit()
             return tx.id  # UUID
 
-Base.metadata.create_all(engine)
+def init_db():
+    # crea tablas si no existen
+    Base.metadata.create_all(engine)

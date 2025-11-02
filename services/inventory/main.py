@@ -7,6 +7,9 @@ SQLAlchemy-backed repository in ``repo.InventoryRepo``.
 """
 
 import uuid, logging
+import time
+from sqlalchemy import text
+from repo import InventoryRepo, init_db, engine
 from fastapi import Request
 from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, HTTPException
@@ -25,6 +28,20 @@ if not logger.handlers:
     logger.addHandler(h)
     logger.setLevel(logging.INFO)
 
+@app.on_event("startup")
+def _startup_db():
+    # espera activa breve hasta que la DB acepte conexiones
+    deadline = time.time() + 30  # 30s
+    while True:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("select 1"))
+            break
+        except Exception:
+            if time.time() > deadline:
+                raise
+            time.sleep(1)
+    init_db()
 
 class Item(BaseModel):
     """An item to be reserved from inventory.
