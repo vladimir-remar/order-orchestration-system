@@ -8,6 +8,7 @@ payments, and the domain service that orchestrates placing an order.
 from dataclasses import dataclass
 from typing import Protocol, List
 from enum import Enum
+from uuid import UUID
 
 
 # ---- Enums ----
@@ -55,7 +56,7 @@ class Order:
         currency: ISO currency code (e.g. 'EUR').
     """
 
-    id: int | None
+    id: UUID | None
     items: List[OrderItem]
     status: OrderStatus = OrderStatus.CREATED
     total_cents: int = 0
