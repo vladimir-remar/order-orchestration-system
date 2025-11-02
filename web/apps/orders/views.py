@@ -20,6 +20,7 @@ from .schemas import CreateOrderDTO
 from .domain import Order, OrderItem
 
 from .providers import get_order_service
+from .repository import OrderRepository
 
 class OrdersPingView(APIView):
     """Simple health-check endpoint for the orders module.
@@ -53,12 +54,12 @@ class CreateOrderView(APIView):
     def post(self, request):
         """Handle POST requests to create an order.
 
-        Behaviour:
+        Behavior:
             1. Validate incoming JSON using `CreateOrderDTO`.
             2. Map validated DTO to domain `Order` and `OrderItem`.
-                3. Invoke the domain `OrderService` obtained from
-                    `get_order_service()` (which selects HTTP adapters or
-                    stubs based on configuration).
+            3. Invoke the domain `OrderService` obtained from
+               `get_order_service()` (which selects HTTP adapters or
+               stubs based on configuration).
             4. Translate domain and transport errors into HTTP responses.
 
         Args:
@@ -90,7 +91,11 @@ class CreateOrderView(APIView):
                 return Response({"detail": code}, status=status.HTTP_402_PAYMENT_REQUIRED)
             return Response({"detail": code}, status=status.HTTP_400_BAD_REQUEST)
         except httpx.HTTPError:
-            # Errores de red: dependencia externa caída → 502/503 (elige política)
+            # Network errors: external dependency unavailable — map to
+            # 503 Service Unavailable (policy choice)
             return Response({"detail": "UPSTREAM_UNAVAILABLE"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        return Response({"status": out.status.value}, status=status.HTTP_201_CREATED)
+        repo = OrderRepository()
+        new_id = repo.create(out)
+
+        return Response({"id": new_id, "status": out.status.value}, status=status.HTTP_201_CREATED)
