@@ -16,7 +16,6 @@ and, upon completion, stores the response. Subsequent retries with the same
 payload return the stored response with HTTP 200. If the same key is reused
 with a different payload, the endpoint returns HTTP 409 (conflict).
 """
-import httpx
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -38,6 +37,9 @@ class OrdersPingView(APIView):
     def get(self, request):
         """Handle GET requests for the health endpoint.
 
+        Args:
+            request (Request): The incoming DRF request.
+
         Returns:
             Response: A DRF Response with JSON {"ok": True} and HTTP 200.
         """
@@ -45,47 +47,38 @@ class OrdersPingView(APIView):
 
 
 class CreateOrderView(APIView):
-    """Endpoint to create new orders.
+    """Create an order by orchestrating inventory and payment.
 
-    This view expects a JSON payload matching `CreateOrderDTO`. It
-    validates the input with Pydantic, maps the input DTO to domain
-    objects, invokes the domain `OrderService` and returns an appropriate
-    HTTP response based on the domain outcome.
-
-    The default wiring uses HTTP adapter clients to call external
-    inventory/payments services; network or upstream errors are mapped to
-    a 503 to indicate temporary unavailability.
+    This view validates the payload using a Pydantic DTO, calls the domain
+    service to reserve stock and charge the payment, persists the order, and
+    returns the created resource. It supports idempotency via the
+    ``Idempotency-Key`` header: the first request is processed and its
+    response cached; subsequent retries with the same key and identical
+    payload return the cached response with HTTP 200. Reusing the same key
+    with a different payload returns HTTP 409.
     """
 
     def post(self, request):
-        """Handle POST requests to create an order.
-
-        Behavior:
-            1. Read optional ``Idempotency-Key`` header.
-            2. Validate incoming JSON using ``CreateOrderDTO``.
-            3. If idempotency is enabled: get-or-create a record.
-               - If existing with same payload: return stored body (200).
-               - If existing with different payload: return 409 conflict.
-            4. Map validated DTO to domain ``Order`` and ``OrderItem``.
-            5. Invoke the domain ``OrderService`` obtained from
-               ``get_order_service()``.
-            6. Translate domain errors into HTTP responses:
-               - ``INSUFFICIENT_STOCK`` -> 422
-               - ``PAYMENT_FAILED`` -> 402
-               - other domain errors -> 400
-               Persist idempotent response when applicable.
-            7. Persist the order and return 201 with ``{"id", "status"}``.
-               Persist idempotent response when applicable.
+        """Create a new order.
 
         Args:
-            request: DRF Request instance containing JSON payload.
+            request (Request): DRF request with JSON body and optional
+                ``Idempotency-Key`` header.
 
         Returns:
-            Response: On success, 201 with the order id and status.
-            On validation, domain, or transport errors returns an
-            appropriate 4xx/5xx response. When idempotency is used,
-            cached responses are returned with 200 on retries or 409 on
-            payload conflict.
+            Response: One of the following responses.
+            - 201 with {id, status, transaction_id} when the order is created.
+            - 200 with cached body when the same idempotency key and payload
+              are retried.
+            - 409 with {detail: "IDEMPOTENCY_CONFLICT"} when the same key is
+              reused with a different payload.
+            - 400 for DTO validation errors.
+            - 422 with {detail: "INSUFFICIENT_STOCK"} when stock cannot be
+              reserved.
+            - 402 with {detail: "PAYMENT_FAILED"} when the payment is
+              declined.
+            - 503 with {detail: "UPSTREAM_UNAVAILABLE"} when upstream
+              services are unavailable.
         """
 
         idem_key = request.headers.get("Idempotency-Key")
@@ -116,16 +109,26 @@ class CreateOrderView(APIView):
             code = str(e)
             status_code = 422 if code == "INSUFFICIENT_STOCK" else (402 if code == "PAYMENT_FAILED" else 400)
             body = {"detail": code}
-            if rec: finalize(rec, status_code, body)
+            if rec:
+                finalize(rec, status_code, body)
             return Response(body, status=status_code)
         except Exception:
             body = {"detail": "UPSTREAM_UNAVAILABLE"}
-            if rec: finalize(rec, 503, body)
+            if rec:
+                finalize(rec, 503, body)
             return Response(body, status=503)
 
         # 4) Persistence + response
         repo = OrderRepository()
         new_id = repo.create(out)
-        body = {"id": str(new_id), "status": out.status.value}
-        if rec: finalize(rec, 201, body, order_id=new_id)
-        return Response(body, status=201)
+        body = {
+            "id": str(new_id),
+            "status": out.status.value,
+            "transaction_id": (str(out.transaction_id) if out.transaction_id else None),
+        }
+
+        if rec:
+            finalize(rec, status.HTTP_201_CREATED, body, order_id=new_id)
+            return Response(body, status=status.HTTP_201_CREATED)
+
+        return Response(body, status=status.HTTP_201_CREATED)

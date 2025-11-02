@@ -1,42 +1,36 @@
-"""Repository layer for persisting orders.
+"""Persistence adapter for storing orders via Django ORM.
 
-This module contains a small repository abstraction used by the
-application to persist order information. It intentionally keeps a
-thin interface so the domain layer is not coupled to Django ORM
-details.
+This module maps the domain `Order` entity to the Django `OrderModel` and
+persists it. It keeps the persistence concerns out of the domain service.
 """
 
 from .models import OrderModel
 from .domain import Order, OrderStatus
 
-
 class OrderRepository:
-    """Repository that persists Order domain objects using Django ORM.
+    """Repository responsible for persisting orders.
 
-    The repository exposes a minimal API that returns primitive values
-    (for example the persisted object's id) to keep domain code
-    decoupled from ORM types.
+    The repository converts the domain `Order` into the Django
+    `OrderModel` and persists it, returning the model's primary key.
     """
 
-    def create(self, order: Order, transaction_id: int | None = None):
-        """Persist a new order record.
-
-        The method maps fields from the domain `Order` into the
-        `OrderModel` and returns the created model's identifier.
+    def create(self, order: Order):
+        """Persist a domain order and return its model id.
 
         Args:
-            order: Domain `Order` instance to persist.
-            transaction_id: Optional transaction identifier returned by
-                the payments service (if available).
+            order: Domain order to persist. Uses `order.status` (string or
+                enum), `total_cents`, `currency`, and optional
+                `transaction_id`.
 
         Returns:
-            The persisted `OrderModel` primary key (UUID or integer
-            depending on the model configuration).
+            The primary key of the created `OrderModel` (UUID).
         """
-        obj = OrderModel.objects.create(
+        manager = getattr(OrderModel, "objects")
+        obj = manager.create(
             status=order.status.value if isinstance(order.status, OrderStatus) else order.status,
             total_cents=order.total_cents,
             currency=order.currency,
-            transaction_id=transaction_id,
+            transaction_id=order.transaction_id,   # Store transaction UUID
         )
-        return obj.id  # <-- UUID
+        return obj.id
+

@@ -1,52 +1,54 @@
-"""Lightweight adapter stubs for inventory and payments used in tests
-and local development.
+"""In-process stub adapters for the orders domain ports.
 
-These implementations are intentionally simple and deterministic so they
-can be used by unit tests and examples without requiring external
-services.
+These stubs implement ``InventoryPort`` and ``PaymentsPort`` without any
+network calls. They are intended for unit tests and local development
+where deterministic behavior is useful and external services are not
+required.
 """
 
-from typing import List
+import uuid
+from typing import List, Tuple, Optional
 from .domain import InventoryPort, PaymentsPort, OrderItem
 
-
 class InventoryStub(InventoryPort):
-    """Simple inventory adapter that simulates reservation behavior.
+    """Stub implementation of ``InventoryPort``.
 
-    The stub accepts quantities in a reasonable range (1..10) and fails
-    otherwise. This deterministic behavior makes it suitable for tests.
+    Approves reservations when each item's quantity is between 1 and 10
+    (inclusive). This is a deterministic rule for testing purposes.
     """
 
     def reserve(self, items: List[OrderItem]) -> bool:
-        """Attempt to reserve a list of order items.
+        """Attempt to reserve the provided items.
 
         Args:
-            items: List of OrderItem to reserve.
+            items: List of order items to reserve.
 
         Returns:
-            True when every item's quantity is between 1 and 10 (inclusive).
-            False otherwise.
+            bool: True if every item's quantity is in the inclusive range
+            [1, 10]; otherwise False.
         """
-        # Allow reasonable quantities (<=10) to simulate success
         return all(1 <= it.quantity <= 10 for it in items)
 
-
 class PaymentsStub(PaymentsPort):
-    """Simple payments adapter that simulates charging behavior.
+    """Stub implementation of ``PaymentsPort``.
 
-    The stub treats any positive amount as a successful charge. The DTOs
-    should ensure amount > 0 in normal flows.
+    Approves charges with a positive amount and returns a generated UUID
+    as the transaction id. Non-positive amounts are rejected.
     """
 
-    def charge(self, amount_cents: int, currency: str) -> bool:
-        """Charge the given amount in cents for the provided currency.
+    def charge(self, amount_cents: int, currency: str) -> tuple[bool, Optional[uuid.UUID]]:
+        """Charge a mock payment.
 
         Args:
-            amount_cents: Amount to charge expressed in integer cents.
-            currency: ISO currency code (e.g. 'EUR').
+            amount_cents: Amount to charge in minor units (cents).
+            currency: Three-letter ISO currency code (e.g., EUR, USD).
 
         Returns:
-            True if the amount is positive, False otherwise.
+            tuple[bool, Optional[uuid.UUID]]: A tuple ``(paid, transaction_id)``
+            where ``paid`` is True when ``amount_cents`` > 0 and
+            ``transaction_id`` is a randomly generated UUID for approved
+            payments; otherwise ``(False, None)``.
         """
-        # Success if amount is positive (guaranteed by DTOs)
-        return amount_cents > 0
+        if amount_cents <= 0:
+            return (False, None)
+        return (True, uuid.uuid4())  # Demo: generate a valid UUID

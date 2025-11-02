@@ -13,9 +13,11 @@ from uuid import UUID
 
 # ---- Enums ----
 class OrderStatus(str, Enum):
-    """Enumeration of the possible order statuses.
-    These statuses are used by the domain service to reflect the order
-    lifecycle."""
+    """Enumeration of possible order statuses.
+
+    Used by the domain service to reflect the order lifecycle and
+    intermediate/failure states during processing.
+    """
 
     CREATED = "CREATED"
     STOCK_RESERVED = "STOCK_RESERVED"
@@ -61,6 +63,7 @@ class Order:
     status: OrderStatus = OrderStatus.CREATED
     total_cents: int = 0
     currency: str = "EUR"
+    transaction_id: UUID | None = None 
 
 
 # ---- Ports (DIP) ----
@@ -94,7 +97,7 @@ class PaymentsPort(Protocol):
     boolean indicating success.
     """
 
-    def charge(self, amount_cents: int, currency: str) -> bool:
+    def charge(self, amount_cents: int, currency: str) -> tuple[bool, UUID | None]:
         """Charge the given amount in the specified currency.
 
         Args:
@@ -102,7 +105,10 @@ class PaymentsPort(Protocol):
             currency: Currency code (ISO), e.g. 'EUR'.
 
         Returns:
-            True if the charge was successful, False otherwise.
+            tuple[bool, UUID | None]: A tuple ``(paid, transaction_id)`` where
+            ``paid`` indicates success and ``transaction_id`` is the public
+            identifier of the created transaction when available (None on
+            failure or when not applicable).
 
         Raises:
             NotImplementedError: If the method is not implemented by the
@@ -155,18 +161,20 @@ class OrderService:
         if not order.items:
             raise ValueError("EMPTY_ORDER")
 
-        # 1) Reserve stock
+        # Stock
         if not self.inventory.reserve(order.items):
             order.status = OrderStatus.STOCK_FAILED
             raise ValueError("INSUFFICIENT_STOCK")
         order.status = OrderStatus.STOCK_RESERVED
 
-        # 2) Charge payment
-        if not self.payments.charge(order.total_cents, order.currency):
+        # Payment
+        paid, tx_id = self.payments.charge(order.total_cents, order.currency)
+        if not paid:
             order.status = OrderStatus.PAYMENT_FAILED
             raise ValueError("PAYMENT_FAILED")
+        order.transaction_id = tx_id
         order.status = OrderStatus.PAID
 
-        # 3) Confirm
+        # Confirm
         order.status = OrderStatus.CONFIRMED
         return order
