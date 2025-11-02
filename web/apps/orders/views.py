@@ -4,10 +4,12 @@ This module contains DRF API views used by the orders service. Views are
 kept intentionally small: they validate requests (via Pydantic), map to
 domain DTOs, delegate to the domain service, and return an HTTP response.
 
-By default the views instantiate HTTP adapter clients
-(`HttpInventoryClient`, `HttpPaymentsClient`) to communicate with
-external services. In tests or local development you can swap these for
-the simple in-process stubs (`InventoryStub`, `PaymentsStub`).
+The views obtain a configured `OrderService` from the `get_order_service()`
+provider which will either return HTTP adapter-backed ports
+(`HttpInventoryClient`, `HttpPaymentsClient`) or in-process stubs
+(`InventoryStub`, `PaymentsStub`) depending on runtime settings. This
+allows tests and local development to swap implementations without
+changing view logic.
 """
 import httpx
 from rest_framework.views import APIView
@@ -15,9 +17,9 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from .schemas import CreateOrderDTO
-from .domain import OrderService, Order, OrderItem
-from .adapters import InventoryStub, PaymentsStub
-from .http_adapters import HttpInventoryClient, HttpPaymentsClient
+from .domain import Order, OrderItem
+
+from .providers import get_order_service
 
 class OrdersPingView(APIView):
     """Simple health-check endpoint for the orders module.
@@ -54,8 +56,9 @@ class CreateOrderView(APIView):
         Behaviour:
             1. Validate incoming JSON using `CreateOrderDTO`.
             2. Map validated DTO to domain `Order` and `OrderItem`.
-            3. Invoke the domain `OrderService` using configured ports
-               (by default HTTP adapters).
+                3. Invoke the domain `OrderService` obtained from
+                    `get_order_service()` (which selects HTTP adapters or
+                    stubs based on configuration).
             4. Translate domain and transport errors into HTTP responses.
 
         Args:
@@ -75,10 +78,7 @@ class CreateOrderView(APIView):
         items = [OrderItem(sku=i.sku, quantity=i.quantity) for i in dto.items]
         order = Order(id=None, items=items, total_cents=dto.amount_cents, currency=dto.currency)
 
-        service = OrderService(
-            inventory=HttpInventoryClient(),
-            payments=HttpPaymentsClient(),
-        )
+        service = get_order_service() 
 
         try:
             out = service.place_order(order)
