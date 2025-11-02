@@ -20,7 +20,7 @@ class OrderModel(models.Model):
     status = models.CharField(max_length=32, choices=Status.choices, default=Status.CREATED)
     total_cents = models.PositiveIntegerField(default=0)
     currency = models.CharField(max_length=3, default="EUR")
-    transaction_id = models.PositiveIntegerField(null=True, blank=True)
+    transaction_id = models.UUIDField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
