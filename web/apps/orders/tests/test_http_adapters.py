@@ -25,7 +25,7 @@ class DummyResp:
 
 def test_inventory_reserve_ok(monkeypatch):
     """Inventory adapter returns True on 200 with reserved=True."""
-    def fake_post(self, url, json):
+    def fake_post(self, url, json, **kwargs):
         return DummyResp(200, {"reserved": True})
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
     client = HttpInventoryClient(base_url="http://inventory:9001")
@@ -33,7 +33,7 @@ def test_inventory_reserve_ok(monkeypatch):
 
 def test_inventory_reserve_fail(monkeypatch):
     """Inventory adapter returns False on 422 reserved failure."""
-    def fake_post(self, url, json):
+    def fake_post(self, url, json, **kwargs):
         return DummyResp(422, {"reserved": False})
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
     client = HttpInventoryClient()
@@ -41,7 +41,7 @@ def test_inventory_reserve_fail(monkeypatch):
 
 def test_payments_charge_ok(monkeypatch):
     """Payments adapter returns (True, UUID) on 200 with paid and id."""
-    def fake_post(self, url, json):
+    def fake_post(self, url, json, **kwargs):
         return DummyResp(200, {"paid": True, "transaction_id": str(uuid.uuid4())})
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
     client = HttpPaymentsClient()
@@ -50,7 +50,7 @@ def test_payments_charge_ok(monkeypatch):
 
 def test_payments_charge_network_error(monkeypatch):
     """Payments adapter propagates network errors from httpx."""
-    def fake_post(self, url, json):
+    def fake_post(self, url, json, **kwargs):
         raise httpx.ConnectError("boom")
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
     client = HttpPaymentsClient()

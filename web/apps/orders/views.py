@@ -14,7 +14,9 @@ Idempotency: when an ``Idempotency-Key`` header is provided, the create
 endpoint ensures idempotent processing. The first request creates a record
 and, upon completion, stores the response. Subsequent retries with the same
 payload return the stored response with HTTP 200. If the same key is reused
-with a different payload, the endpoint returns HTTP 409 (conflict).
+with a different payload, the endpoint returns HTTP 409 (conflict). When HTTP
+adapters are enabled, the key is also propagated to the payments HTTP client
+to enable end-to-end idempotency across services.
 """
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -23,9 +25,12 @@ from rest_framework import status
 from .schemas import CreateOrderDTO
 from .domain import Order, OrderItem
 
-from .providers import get_order_service
 from .repository import OrderRepository
 from .idempotency import get_or_create_idempotent, finalize
+from .providers import get_order_service
+from .http_adapters import HttpPaymentsClient
+from django.conf import settings
+
 
 class OrdersPingView(APIView):
     """Simple health-check endpoint for the orders module.
@@ -66,7 +71,7 @@ class CreateOrderView(APIView):
                 ``Idempotency-Key`` header.
 
         Returns:
-            Response: One of the following responses.
+                        Response: One of the following responses.
             - 201 with {id, status, transaction_id} when the order is created.
             - 200 with cached body when the same idempotency key and payload
               are retried.
@@ -103,6 +108,18 @@ class CreateOrderView(APIView):
         items = [OrderItem(sku=i.sku, quantity=i.quantity) for i in dto.items]
         order = Order(id=None, items=items, total_cents=dto.amount_cents, currency=dto.currency)
         service = get_order_service()
+        # If using HTTP adapters and an Idempotency-Key is present, inject it into the Payments client
+
+        try:
+            if getattr(settings, "USE_HTTP_ADAPTERS", False) and idem_key:
+                # get_order_service returns a service instance with HttpPaymentsClient
+                # Set the "_idem_key" attribute if present
+                payments = getattr(service, "payments", None)
+                if isinstance(payments, HttpPaymentsClient):
+                    payments._idem_key = idem_key
+        except Exception:
+            pass
+
         try:
             out = service.place_order(order)
         except ValueError as e:

@@ -10,12 +10,15 @@ variable, defaulting to a local Postgres URL suitable for development.
 """
 
 import os, uuid
+import hashlib, json
 from contextlib import contextmanager
 from typing import Optional
 
 from sqlalchemy import create_engine, Integer, String, Boolean, BigInteger, select
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Session
+from sqlalchemy import UniqueConstraint
+from sqlalchemy.types import LargeBinary
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://app:app@payments-db:5432/payments")
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
@@ -45,6 +48,42 @@ class Transaction(Base):
     currency = mapped_column(String(3), nullable=False)
     amount_cents = mapped_column(Integer, nullable=False)
     paid = mapped_column(Boolean, default=False, nullable=False)
+
+def canonical_hash(payload: dict) -> str:
+    """Compute a deterministic SHA-256 hash of a request payload.
+
+    The payload is serialized to JSON with sorted keys and compact
+    separators to ensure canonical representation across callers.
+
+    Args:
+        payload: JSON-serializable dict to hash.
+
+    Returns:
+        str: Hex-encoded SHA-256 digest of the canonical JSON body.
+    """
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+class IdempotencyKey(Base):
+    """Persisted idempotency records to deduplicate payment requests.
+
+    Attributes:
+        key: Unique idempotency key provided by the client.
+        request_hash: Canonical SHA-256 hex digest of the original request.
+        transaction_id: Optional UUID of the associated transaction once
+            created.
+    """
+    __tablename__ = "idempotency_keys"
+    # Unique idempotency key
+    key = mapped_column(String(200), primary_key=True)
+    # Canonical request hash (sha256 hex)
+    request_hash = mapped_column(String(64), nullable=False)
+    # Associated transaction (UUID)
+    transaction_id = mapped_column(PG_UUID(as_uuid=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("key", name="ux_idempotency_key"),
+    )
 
 @contextmanager
 def get_session():
