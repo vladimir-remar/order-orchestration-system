@@ -1,74 +1,57 @@
-"""Unit tests for the HTTP adapter clients.
+"""Unit tests for HTTP adapters to inventory and payments services.
 
-These tests patch `httpx.Client.post` to simulate upstream service
-responses and network errors. They validate that the adapter clients
-correctly interpret success/failure responses and propagate transport
-exceptions when appropriate.
+These tests verify that the HTTP clients handle success, failure, and
+network error conditions correctly by monkeypatching ``httpx.Client.post``
+and asserting the adapter behavior.
 """
-
-import types
-import httpx
-import pytest
+import httpx, pytest, uuid
 from apps.orders.http_adapters import HttpInventoryClient, HttpPaymentsClient
 from apps.orders.domain import OrderItem
 
-
 class DummyResp:
-    """Minimal fake response object used to simulate httpx responses."""
+    """Minimal httpx-like response stub for adapter tests.
 
+    Args:
+        status_code (int): HTTP status code to simulate.
+        json_data (dict | None): JSON body to return from ``json()``.
+    """
     def __init__(self, status_code=200, json_data=None):
         self.status_code = status_code
         self._json = json_data or {}
-
     def raise_for_status(self):
         if self.status_code >= 400:
             raise httpx.HTTPStatusError("err", request=None, response=None)
-
-    def json(self):
-        return self._json
-
+    def json(self): return self._json
 
 def test_inventory_reserve_ok(monkeypatch):
-    """Inventory reserve returns True when upstream reports reserved."""
-
+    """Inventory adapter returns True on 200 with reserved=True."""
     def fake_post(self, url, json):
         return DummyResp(200, {"reserved": True})
-
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
-
     client = HttpInventoryClient(base_url="http://inventory:9001")
-    ok = client.reserve([OrderItem("SKU1", 2)])
-    assert ok is True
-
+    assert client.reserve([OrderItem("SKU1", 2)]) is True
 
 def test_inventory_reserve_fail(monkeypatch):
-    """Inventory reserve returns False when upstream reports not reserved."""
-
+    """Inventory adapter returns False on 422 reserved failure."""
     def fake_post(self, url, json):
-        return DummyResp(200, {"reserved": False})
-
+        return DummyResp(422, {"reserved": False})
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
     client = HttpInventoryClient()
     assert client.reserve([OrderItem("SKU1", 99)]) is False
 
-
 def test_payments_charge_ok(monkeypatch):
-    """Payments charge returns True when upstream reports paid."""
-
+    """Payments adapter returns (True, UUID) on 200 with paid and id."""
     def fake_post(self, url, json):
-        return DummyResp(200, {"paid": True, "transaction_id": 1})
-
+        return DummyResp(200, {"paid": True, "transaction_id": str(uuid.uuid4())})
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
     client = HttpPaymentsClient()
-    assert client.charge(1000, "EUR") is True
-
+    ok, tx = client.charge(1000, "EUR")
+    assert ok is True and isinstance(tx, uuid.UUID)
 
 def test_payments_charge_network_error(monkeypatch):
-    """Network/connect errors from httpx are propagated by the client."""
-
+    """Payments adapter propagates network errors from httpx."""
     def fake_post(self, url, json):
         raise httpx.ConnectError("boom")
-
     monkeypatch.setattr(httpx.Client, "post", fake_post, raising=True)
     client = HttpPaymentsClient()
     with pytest.raises(httpx.ConnectError):

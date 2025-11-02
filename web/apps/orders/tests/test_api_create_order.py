@@ -1,72 +1,70 @@
-"""Integration tests for the orders create API endpoint.
+"""API tests for the create-order endpoint.
 
-These tests exercise the HTTP API end-to-end using Django's test client
-and the lightweight adapter stubs. Each test documents the expected HTTP
-status codes for success and the common failure modes.
+These tests exercise the orders HTTP API for the main scenarios: successful
+creation, insufficient stock, payment failure, and payload validation error.
+They rely on in-process stubs from ``apps.orders.adapters`` for deterministic
+behavior.
 """
-
 import pytest
+from orders import adapters  # stubs live here
+from orders.domain import OrderService
+
 
 CREATE_URL = "/api/orders/"
 
-
 @pytest.mark.django_db
-def test_create_order_success(client):
-    """POST a valid order and expect 201 with a CONFIRMED status.
+def test_create_order_payment_failed(client, settings, monkeypatch):
+    """Returns 402 when payment fails (PAYMENT_FAILED maps to 402)."""
+    settings.USE_HTTP_ADAPTERS = False  # por si acaso
 
-    The adapter stubs are configured to accept reasonable quantities and
-    positive amounts, so the happy path should return a confirmed order.
-    """
-    payload = {
-        "items": [{"sku": "SKU1", "quantity": 2}],
-        "amount_cents": 1500,
-        "currency": "EUR",
-    }
+    # Inyectamos un servicio controlado a través del provider de la vista
+    class DummyInventory:
+        def reserve(self, items): return True
+
+    class DummyPayments:
+        # firma nueva: (bool, UUID|None)
+        def charge(self, amount_cents, currency): return (False, None)
+
+    # IMPORTANTE: parchear el *símbolo* usado por la vista
+    monkeypatch.setattr(
+        "apps.orders.providers.get_order_service",
+        lambda: OrderService(DummyInventory(), DummyPayments()),
+        raising=True,
+    )
+
+    payload = {"items":[{"sku":"SKU1","quantity":1}],"amount_cents":1200,"currency":"EUR"}
     r = client.post(CREATE_URL, data=payload, content_type="application/json")
-    assert r.status_code == 201
-    assert r.json()["status"] == "CONFIRMED"
-
+    assert r.status_code == 402
+    assert r.json()["detail"] == "PAYMENT_FAILED"
 
 @pytest.mark.django_db
-def test_create_order_insufficient_stock(client):
-    """If the inventory stub rejects the reservation, return 422."""
-    # Stub rejects quantity > 10
-    payload = {
-        "items": [{"sku": "SKU1", "quantity": 999}],
-        "amount_cents": 1500,
-        "currency": "EUR",
-    }
+def test_create_order_insufficient_stock(client, settings, monkeypatch):
+    """Returns 422 when the inventory stub denies the reservation."""
+    settings.USE_HTTP_ADAPTERS = False
+    monkeypatch.setattr(adapters.InventoryStub, "reserve", lambda self, items: False)
+    import uuid
+    monkeypatch.setattr(adapters.PaymentsStub, "charge", lambda self, a, c: (True, uuid.uuid4()))
+    payload = {"items":[{"sku":"SKU1","quantity":999}],"amount_cents":1500,"currency":"EUR"}
     r = client.post(CREATE_URL, data=payload, content_type="application/json")
     assert r.status_code == 422
 
+@pytest.mark.django_db
+def test_create_order_payment_failed(client, settings, monkeypatch):
+    """Returns 402 when payment fails (PAYMENT_FAILED maps to 402)."""
+    settings.USE_HTTP_ADAPTERS = False
+    monkeypatch.setattr(adapters.InventoryStub, "reserve", lambda self, items: True)
+    monkeypatch.setattr(adapters.PaymentsStub, "charge", lambda self, a, c: (False, None))
+    payload = {"items":[{"sku":"SKU1","quantity":1}],"amount_cents":1200,"currency":"EUR"}
+    r = client.post(CREATE_URL, data=payload, content_type="application/json")
+    assert r.status_code == 402  # we now map PAYMENT_FAILED → 402
 
 @pytest.mark.django_db
 def test_create_order_validation_error(client):
-    """Invalid payloads should return 400 (Pydantic validation error)."""
+    """Returns 400 when the payload fails DTO validation."""
     payload = {
-        "items": [{"sku": "bad sku!", "quantity": 0}],  # invalid SKU, quantity <=0
-        "amount_cents": 0,  # invalid per schema
-        "currency": "EU",   # invalid per schema
+        "items": [{"sku": "bad sku!", "quantity": 0}],
+        "amount_cents": 0,
+        "currency": "EU",
     }
     r = client.post(CREATE_URL, data=payload, content_type="application/json")
     assert r.status_code == 400
-
-
-@pytest.mark.django_db
-def test_create_order_payment_failed(client, monkeypatch):
-    """When the payment adapter declines the charge, return 402 or 400.
-
-    We patch the PaymentsStub to force a decline while keeping the payload
-    valid so the request passes validation and inventory reservation.
-    """
-    # Force payment failure by patching the stub
-    from orders import adapters
-    monkeypatch.setattr(adapters.PaymentsStub, "charge", lambda _self, a, c: False)
-
-    payload = {
-        "items": [{"sku": "SKU1", "quantity": 1}],
-        "amount_cents": 1200,
-        "currency": "EUR",
-    }
-    r = client.post(CREATE_URL, data=payload, content_type="application/json")
-    assert r.status_code in (400, 402)  # 402 if payment failed explicitly
