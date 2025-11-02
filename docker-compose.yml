@@ -15,6 +15,27 @@ services:
       interval: 3s
       timeout: 3s
       retries: 10
+  inventory-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - inventory_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+  payments-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    volumes:
+      - payments_data:/var/lib/postgresql/data
+    ports:
+      - "5436:5432"
 
   web:
     build: ./web
@@ -40,13 +61,23 @@ services:
 
   inventory:
     build: ./services/inventory
-    ports: ["9001:9001"]
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001"]
+    volumes: [ "./services/inventory:/app" ]
+    depends_on: [ inventory-db ]
+    ports: [ "9001:9001" ]
+    command: ["uvicorn","main:app","--host","0.0.0.0","--port","9001"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://app:app@inventory-db:5432/inventory
 
   payments:
     build: ./services/payments
-    ports: ["9002:9002"]
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9002"]
+    volumes: [ "./services/payments:/app" ]
+    depends_on: [ payments-db ]
+    ports: [ "9002:9002" ]
+    command: ["uvicorn","main:app","--host","0.0.0.0","--port","9002"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://app:app@payments-db:5432/payments
 
 volumes:
   db_data:
+  inventory_data:
+  payments_data:
