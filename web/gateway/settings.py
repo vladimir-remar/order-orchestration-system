@@ -138,3 +138,7 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+INVENTORY_BASE_URL = os.environ.get("INVENTORY_BASE_URL", "http://inventory:9001")
+PAYMENTS_BASE_URL  = os.environ.get("PAYMENTS_BASE_URL",  "http://payments:9002")
+HTTP_TIMEOUT_SECS  = float(os.environ.get("HTTP_TIMEOUT_SECS", "5"))

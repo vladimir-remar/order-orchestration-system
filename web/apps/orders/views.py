@@ -1,12 +1,15 @@
 """HTTP views for the orders app.
 
 This module contains DRF API views used by the orders service. Views are
-kept intentionally small: they perform request validation (via Pydantic),
-map to domain DTOs, delegate to the domain service, and return an HTTP
-response. The implementations below use local stub adapters for inventory
-and payments in development and tests.
-"""
+kept intentionally small: they validate requests (via Pydantic), map to
+domain DTOs, delegate to the domain service, and return an HTTP response.
 
+By default the views instantiate HTTP adapter clients
+(`HttpInventoryClient`, `HttpPaymentsClient`) to communicate with
+external services. In tests or local development you can swap these for
+the simple in-process stubs (`InventoryStub`, `PaymentsStub`).
+"""
+import httpx
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -14,13 +17,13 @@ from rest_framework import status
 from .schemas import CreateOrderDTO
 from .domain import OrderService, Order, OrderItem
 from .adapters import InventoryStub, PaymentsStub
-
+from .http_adapters import HttpInventoryClient, HttpPaymentsClient
 
 class OrdersPingView(APIView):
     """Simple health-check endpoint for the orders module.
 
-    This view returns a minimal JSON payload used by liveness/health checks
-    and by automated smoke-tests.
+    This view returns a minimal JSON payload used by liveness/health
+    checks and by automated smoke-tests.
     """
 
     def get(self, request):
@@ -35,10 +38,14 @@ class OrdersPingView(APIView):
 class CreateOrderView(APIView):
     """Endpoint to create new orders.
 
-    This view expects a JSON payload matching `CreateOrderDTO`. It validates
-    the input with Pydantic, maps the input DTO to domain objects, invokes
-    the domain `OrderService`, and returns an appropriate HTTP response
-    based on the domain outcome.
+    This view expects a JSON payload matching `CreateOrderDTO`. It
+    validates the input with Pydantic, maps the input DTO to domain
+    objects, invokes the domain `OrderService` and returns an appropriate
+    HTTP response based on the domain outcome.
+
+    The default wiring uses HTTP adapter clients to call external
+    inventory/payments services; network or upstream errors are mapped to
+    a 503 to indicate temporary unavailability.
     """
 
     def post(self, request):
@@ -47,30 +54,31 @@ class CreateOrderView(APIView):
         Behaviour:
             1. Validate incoming JSON using `CreateOrderDTO`.
             2. Map validated DTO to domain `Order` and `OrderItem`.
-            3. Use `OrderService` (with local stubs) to place the order.
-            4. Translate domain errors into HTTP responses.
+            3. Invoke the domain `OrderService` using configured ports
+               (by default HTTP adapters).
+            4. Translate domain and transport errors into HTTP responses.
 
         Args:
             request: DRF Request instance containing JSON payload.
 
         Returns:
             DRF Response object. On success returns 201 with the order
-            status. On validation or domain errors returns an appropriate
-            4xx/5xx response.
+            status. On validation, domain, or transport errors returns an
+            appropriate 4xx/5xx response.
         """
         # 1) Validation with Pydantic
         try:
             dto = CreateOrderDTO.model_validate(request.data)
         except Exception as e:
-            # Pydantic raises ValidationError with structured data; return 400
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2) Map to domain DTOs (Order/OrderItem)
         items = [OrderItem(sku=i.sku, quantity=i.quantity) for i in dto.items]
         order = Order(id=None, items=items, total_cents=dto.amount_cents, currency=dto.currency)
 
-        # 3) Domain service with ports (stubs for now)
-        service = OrderService(InventoryStub(), PaymentsStub())
+        service = OrderService(
+            inventory=HttpInventoryClient(),
+            payments=HttpPaymentsClient(),
+        )
 
         try:
             out = service.place_order(order)
@@ -81,6 +89,8 @@ class CreateOrderView(APIView):
             if code == "PAYMENT_FAILED":
                 return Response({"detail": code}, status=status.HTTP_402_PAYMENT_REQUIRED)
             return Response({"detail": code}, status=status.HTTP_400_BAD_REQUEST)
+        except httpx.HTTPError:
+            # Errores de red: dependencia externa caída → 502/503 (elige política)
+            return Response({"detail": "UPSTREAM_UNAVAILABLE"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        # 4) Response (no persistence yet)
         return Response({"status": out.status.value}, status=status.HTTP_201_CREATED)
