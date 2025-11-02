@@ -6,6 +6,9 @@ models, while persistence and reservation logic is delegated to the
 SQLAlchemy-backed repository in ``repo.InventoryRepo``.
 """
 
+import uuid, logging
+from fastapi import Request
+from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, constr
 from typing import List
@@ -14,6 +17,14 @@ from repo import InventoryRepo  # Uses SQLAlchemy and the `inventory-db` databas
 app = FastAPI(title="Inventory Service")
 
 Sku = constr(pattern=r"^[A-Z0-9_-]{3,32}$")
+# logger JSON
+logger = logging.getLogger("inventory")
+if not logger.handlers:
+    h = logging.StreamHandler()
+    h.setFormatter(jsonlogger.JsonFormatter("%(asctime)s %(levelname)s %(name)s %(message)s %(request_id)s"))
+    logger.addHandler(h)
+    logger.setLevel(logging.INFO)
+
 
 class Item(BaseModel):
     """An item to be reserved from inventory.
@@ -77,3 +88,17 @@ def reserve(req: ReserveRequest):
         raise HTTPException(status_code=422, detail={"reserved": False, "detail": "INSUFFICIENT_STOCK"})
 
     return ReserveResponse(reserved=True)
+
+@app.middleware("http")
+async def add_request_id(request: Request, call_next):
+    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    # guardamos en state para logs locales
+    request.state.request_id = rid
+    try:
+        response = await call_next(request)
+    finally:
+        # log estructurado mínimo
+        logger.info("request handled", extra={"request_id": rid, "path": request.url.path, "method": request.method})
+    # devolvemos el header
+    response.headers["X-Request-ID"] = rid
+    return response

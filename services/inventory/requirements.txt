@@ -4,3 +4,4 @@ pydantic
 SQLAlchemy
 psycopg[binary]
 pytest
+python-json-logger

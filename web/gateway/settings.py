@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 import sys
 from pathlib import Path
+from pythonjsonlogger import jsonlogger
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -54,6 +55,10 @@ THIRD_PARTY_APPS = [
 INSTALLED_APPS += DOMAIN_APPS
 INSTALLED_APPS += THIRD_PARTY_APPS
 
+PROJECT_MIDDLEWARE = [
+    'gateway.middleware.RequestIdMiddleware',
+]
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -63,6 +68,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+MIDDLEWARE += PROJECT_MIDDLEWARE
 
 ROOT_URLCONF = 'gateway.urls'
 
@@ -145,3 +152,32 @@ HTTP_TIMEOUT_SECS  = float(os.environ.get("HTTP_TIMEOUT_SECS", "5"))
 
 # adapters
 USE_HTTP_ADAPTERS = os.environ.get("USE_HTTP_ADAPTERS", "1") in {"1", "true", "True"}
+
+
+# Logging
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {"()": "gateway.logging_filters.RequestIdFilter"},
+    },
+    "formatters": {
+        "json": {
+            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+            "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s %(request_id)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "filters": ["request_id"],
+            "formatter": "json",
+        },
+    },
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "apps":   {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "uvicorn.error": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+}
