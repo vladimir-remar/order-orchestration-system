@@ -39,3 +39,14 @@ class OrderModel(models.Model):
                 self.internal_id = 1 if not last or last.internal_id is None else last.internal_id + 1
 
         super().save(*args, **kwargs)
+
+class IdempotencyKey(models.Model):
+    key = models.CharField(max_length=200, unique=True)
+    request_hash = models.CharField(max_length=64)  # sha256
+    response_status = models.PositiveIntegerField()
+    response_body = models.JSONField()
+    order_id = models.UUIDField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "orders_idempotency_keys"

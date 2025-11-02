@@ -4,12 +4,17 @@ This module contains DRF API views used by the orders service. Views are
 kept intentionally small: they validate requests (via Pydantic), map to
 domain DTOs, delegate to the domain service, and return an HTTP response.
 
-The views obtain a configured `OrderService` from the `get_order_service()`
-provider which will either return HTTP adapter-backed ports
-(`HttpInventoryClient`, `HttpPaymentsClient`) or in-process stubs
-(`InventoryStub`, `PaymentsStub`) depending on runtime settings. This
-allows tests and local development to swap implementations without
-changing view logic.
+The views obtain a configured ``OrderService`` from ``get_order_service()``
+which returns HTTP adapter-backed ports (``HttpInventoryClient``,
+``HttpPaymentsClient``) or in-process stubs (``InventoryStub``,
+``PaymentsStub``) depending on runtime settings. This allows tests and
+local development to swap implementations without changing view logic.
+
+Idempotency: when an ``Idempotency-Key`` header is provided, the create
+endpoint ensures idempotent processing. The first request creates a record
+and, upon completion, stores the response. Subsequent retries with the same
+payload return the stored response with HTTP 200. If the same key is reused
+with a different payload, the endpoint returns HTTP 409 (conflict).
 """
 import httpx
 from rest_framework.views import APIView
@@ -21,6 +26,7 @@ from .domain import Order, OrderItem
 
 from .providers import get_order_service
 from .repository import OrderRepository
+from .idempotency import get_or_create_idempotent, finalize
 
 class OrdersPingView(APIView):
     """Simple health-check endpoint for the orders module.
@@ -55,47 +61,71 @@ class CreateOrderView(APIView):
         """Handle POST requests to create an order.
 
         Behavior:
-            1. Validate incoming JSON using `CreateOrderDTO`.
-            2. Map validated DTO to domain `Order` and `OrderItem`.
-            3. Invoke the domain `OrderService` obtained from
-               `get_order_service()` (which selects HTTP adapters or
-               stubs based on configuration).
-            4. Translate domain and transport errors into HTTP responses.
+            1. Read optional ``Idempotency-Key`` header.
+            2. Validate incoming JSON using ``CreateOrderDTO``.
+            3. If idempotency is enabled: get-or-create a record.
+               - If existing with same payload: return stored body (200).
+               - If existing with different payload: return 409 conflict.
+            4. Map validated DTO to domain ``Order`` and ``OrderItem``.
+            5. Invoke the domain ``OrderService`` obtained from
+               ``get_order_service()``.
+            6. Translate domain errors into HTTP responses:
+               - ``INSUFFICIENT_STOCK`` -> 422
+               - ``PAYMENT_FAILED`` -> 402
+               - other domain errors -> 400
+               Persist idempotent response when applicable.
+            7. Persist the order and return 201 with ``{"id", "status"}``.
+               Persist idempotent response when applicable.
 
         Args:
             request: DRF Request instance containing JSON payload.
 
         Returns:
-            DRF Response object. On success returns 201 with the order
-            status. On validation, domain, or transport errors returns an
-            appropriate 4xx/5xx response.
+            Response: On success, 201 with the order id and status.
+            On validation, domain, or transport errors returns an
+            appropriate 4xx/5xx response. When idempotency is used,
+            cached responses are returned with 200 on retries or 409 on
+            payload conflict.
         """
-        # 1) Validation with Pydantic
+
+        idem_key = request.headers.get("Idempotency-Key")
+
+        # 1) Pydantic validation
         try:
             dto = CreateOrderDTO.model_validate(request.data)
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 2) Idempotency get-or-create
+        rec = None
+        if idem_key:
+            try:
+                existing, rec = get_or_create_idempotent(idem_key, request.data)
+            except ValueError:
+                return Response({"detail": "IDEMPOTENCY_CONFLICT"}, status=status.HTTP_409_CONFLICT)
+            if existing:
+                return Response(rec.response_body, status=200)
+
+        # 3) Domain
         items = [OrderItem(sku=i.sku, quantity=i.quantity) for i in dto.items]
         order = Order(id=None, items=items, total_cents=dto.amount_cents, currency=dto.currency)
-
-        service = get_order_service() 
-
+        service = get_order_service()
         try:
             out = service.place_order(order)
         except ValueError as e:
             code = str(e)
-            if code == "INSUFFICIENT_STOCK":
-                return Response({"detail": code}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-            if code == "PAYMENT_FAILED":
-                return Response({"detail": code}, status=status.HTTP_402_PAYMENT_REQUIRED)
-            return Response({"detail": code}, status=status.HTTP_400_BAD_REQUEST)
-        except httpx.HTTPError:
-            # Network errors: external dependency unavailable — map to
-            # 503 Service Unavailable (policy choice)
-            return Response({"detail": "UPSTREAM_UNAVAILABLE"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            status_code = 422 if code == "INSUFFICIENT_STOCK" else (402 if code == "PAYMENT_FAILED" else 400)
+            body = {"detail": code}
+            if rec: finalize(rec, status_code, body)
+            return Response(body, status=status_code)
+        except Exception:
+            body = {"detail": "UPSTREAM_UNAVAILABLE"}
+            if rec: finalize(rec, 503, body)
+            return Response(body, status=503)
 
+        # 4) Persistence + response
         repo = OrderRepository()
         new_id = repo.create(out)
-
-        return Response({"id": new_id, "status": out.status.value}, status=status.HTTP_201_CREATED)
+        body = {"id": str(new_id), "status": out.status.value}
+        if rec: finalize(rec, 201, body, order_id=new_id)
+        return Response(body, status=201)
