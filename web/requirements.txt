@@ -1,3 +1,4 @@
+annotated-types==0.7.0
 asgiref==3.10.0
 Django==5.2.7
 djangorestframework==3.16.1
@@ -6,8 +7,11 @@ packaging==25.0
 pluggy==1.6.0
 psycopg==3.2.12
 psycopg-binary==3.2.12
+pydantic==2.12.3
+pydantic_core==2.41.4
 Pygments==2.19.2
 pytest==8.4.2
 pytest-django==4.11.1
 sqlparse==0.5.3
+typing-inspection==0.4.2
 typing_extensions==4.15.0
