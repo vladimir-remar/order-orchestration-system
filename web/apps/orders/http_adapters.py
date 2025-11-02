@@ -43,14 +43,24 @@ class HttpInventoryClient(InventoryPort):
 
         Raises:
             httpx.HTTPError: For transport-level or non-2xx responses.
+
+        Notes:
+            A 422 Unprocessable Entity response (insufficient stock)
+            is treated as a valid negative outcome and returns False
+            without raising an exception.
         """
         payload = {"items": [{"sku": i.sku, "quantity": i.quantity} for i in items]}
         with httpx.Client(timeout=self.timeout) as client:
             r = client.post(f"{self.base_url}/reserve", json=payload)
+            if r.status_code == 200:
+                data = r.json()
+                return bool(data.get("reserved", False))
+            if r.status_code == 422:
+                # Insufficient stock -> reservation failed; do not raise
+                return False
+            # Any other non-2xx code is unexpected -> raise
             r.raise_for_status()
-            data = r.json()
-            return bool(data.get("reserved", False))
-
+            return False  # por tipo
 
 class HttpPaymentsClient(PaymentsPort):
     """HTTP client for the payments service implementing PaymentsPort.
@@ -79,11 +89,20 @@ class HttpPaymentsClient(PaymentsPort):
 
         Raises:
             httpx.HTTPError: For transport-level or non-2xx responses.
+
+        Notes:
+            A 402 Payment Required response (payment failed) is treated
+            as a valid negative outcome and returns False without
+            raising an exception.
         """
         payload = {"amount_cents": amount_cents, "currency": currency}
         with httpx.Client(timeout=self.timeout) as client:
             r = client.post(f"{self.base_url}/charge", json=payload)
+            if r.status_code == 200:
+                data = r.json()
+                return bool(data.get("paid", False))
+            if r.status_code == 402:
+                # Payment declined -> return False; do not raise
+                return False
             r.raise_for_status()
-            data = r.json()
-            # Payments returns {"paid": True, "transaction_id": N}
-            return bool(data.get("paid", False))
+            return False
