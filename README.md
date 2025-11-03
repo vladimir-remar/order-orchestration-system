@@ -1,120 +1,5 @@
 🧠 Order Orchestration System (Microservices • Resilient • Idempotent • Distributed)
 
-A production-grade order orchestration platform designed with real-world constraints:
-
-- Distributed microservices
-
-- Network failures, idempotency, retries, circuit breakers
-
-- Inventory + Payments isolation
-
-- Observability & security foundations
-
-- Docker-based local prod environment
-
-- Strong testing culture (functional, resilience & unit tests)
-
-Built with Python + Django + FastAPI + PostgreSQL + Redis + Docker Compose.
-
-✨ Key Features
-| Capability                     | Description                                       |
-| ------------------------------ | ------------------------------------------------- |
-| 🧾 **Order orchestration**     | Gateway creates & manages orders across services  |
-| 🏬 **Inventory microservice**  | Stock reservation, idempotent store               |
-| 💳 **Payments microservice**   | Payment authorization / failure simulation        |
-| 🔁 **Idempotency**             | Safe re-submit of requests (API idempotency keys) |
-| 🧨 **Retries & backoff**       | Exponential retry strategy for upstream calls     |
-| 🧯 **Circuit Breaker**         | Automatic fail-open on unstable dependencies      |
-| 🧪 **Test suite**              | Unit + API + resilience tests (timeouts, chaos)   |
-| ⚙️ **DB migrations**           | Postgres + Alembic                                |
-| 🚦 **Rate limiting**           | DRF throttling (anonymous + scoped)               |
-| ⚡ **Redis**                    | Cache + distributed throttling storage            |
-| 🛡 Security                    | Payload size limits, CORS, headers, HTTPS-ready   |
-| 📦 **Docker Compose prod env** | Multiple DBs, migrations, healthchecks            |
-
-🧭 High-Level Architecture
-
-```
-      ┌────────────┐
-      │   Client   │
-      └─────┬──────┘
-            │ HTTP
-            ▼
- ┌─────────────────────┐        ┌─────────────┐
- │  Django API Gateway │◀──────▶│    Redis    │ (cache, throttling)
- └───────┬─────────────┘        └─────────────┘
-         │ Orchestrates
- ┌───────┼────────────┐
- │       │            │
- ▼       ▼            ▼
-Inventory Service   Payments Service
- (FastAPI + PG)     (FastAPI + PG)
-```
-🏎 Tech Stack
-Core
-| Component               | Tech                              |
-| ----------------------- | --------------------------------- |
-| API Gateway             | Django REST Framework             |
-| Services                | FastAPI                           |
-| DB                      | PostgreSQL                        |
-| Cache / Throttle store  | Redis                             |
-| Migrations              | Django migrations + Alembic       |
-| Container orchestration | Docker Compose                    |
-| Logging                 | JSON structured logs              |
-| Testing                 | pytest, requests, DRF test client |
-
-🚀 Local Development Setup
-1️⃣ Requirements
-| Dependency            | Version       |
-| --------------------- | ------------- |
-| Python                | 3.12          |
-| PostgreSQL            | 16.x          |
-| Docker + Compose      | Latest        |
-| GNU Make *(optional)* | For shortcuts |
-
-2️⃣ Clone the project
-```bash
-git clone https://github.com/your-user/order-orchestration-system.git
-cd order-orchestration-system
-```
-
-3️⃣ Install Python dependencies
-|Optional, useful for running tests without Docker
-
-```bash
-python3.12 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-```
-🏗 Environment Variables
-Local .env example
-Create a `.env.dev` file in the project root with the following content:
-```env
-POSTGRES_DB=orders
-POSTGRES_USER=app
-POSTGRES_PASSWORD=app
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-
-INVENTORY_BASE_URL=http://inventory:9001
-PAYMENTS_BASE_URL=http://payments:9002
-
-REDIS_URL=redis://redis:6379/1
-
-DJANGO_SECRET_KEY=dev-secret
-
-# Security relaxed locally
-SECURE_SSL_REDIRECT=0
-SECURE_HSTS_SECONDS=0
-DEBUG=1
-
-```
-Production .env example
-Create a `.env.prod` file in the project root with the following content:
-```env
-🧠 Order Orchestration System (Microservices • Resilient • Idempotent • Distributed)
-
 A production-grade order orchestration platform built for real-world constraints:
 
 - Distributed microservices
@@ -143,7 +28,7 @@ Built with Python, Django, FastAPI, PostgreSQL, Redis, and Docker Compose.
 | 📦 **Docker Compose prod env** | Multiple DBs, migrations, healthchecks            |
 
 🧭 High-Level Architecture
-
+```
       ┌────────────┐
       │   Client   │
       └─────┬──────┘
@@ -158,7 +43,7 @@ Built with Python, Django, FastAPI, PostgreSQL, Redis, and Docker Compose.
  ▼       ▼            ▼
 Inventory Service   Payments Service
  (FastAPI + PG)     (FastAPI + PG)
-
+```
 🏎 Tech Stack
 Core
 | Component               | Tech                              |
