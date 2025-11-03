@@ -24,3 +24,8 @@ max_requests_jitter = int(os.getenv("GUNI_MAX_REQUESTS_JITTER", "200"))
 accesslog = "-"
 errorlog = "-"
 loglevel = os.getenv("GUNI_LOGLEVEL", "info")
+
+# limitar encabezados y líneas para evitar abusos
+limit_request_line = int(os.getenv("GUNI_LIMIT_REQUEST_LINE", "8190"))
+limit_request_fields = int(os.getenv("GUNI_LIMIT_REQUEST_FIELDS", "100"))
+limit_request_field_size = int(os.getenv("GUNI_LIMIT_REQUEST_FIELD_SIZE", "8190"))

@@ -18,11 +18,14 @@ with Django's middleware API used in this project.
 """
 
 import uuid
+import os
 import contextvars
+from django.http import JsonResponse
+
 from django.utils.deprecation import MiddlewareMixin
 
 REQUEST_ID_CTX = contextvars.ContextVar("request_id", default="-")
-
+MAX_API_BYTES = int(os.getenv("API_MAX_BYTES", str(1 * 1024 * 1024)))
 
 class RequestIdMiddleware(MiddlewareMixin):
     """Django middleware that sets and returns a per-request identifier.
@@ -73,3 +76,10 @@ class RequestIdMiddleware(MiddlewareMixin):
         rid = getattr(request, "request_id", REQUEST_ID_CTX.get())
         response[self.RESPONSE_HEADER] = rid
         return response
+
+class ApiSizeLimitMiddleware(MiddlewareMixin):
+    def process_request(self, request):
+        if request.path.startswith("/api/"):
+            clen = request.META.get("CONTENT_LENGTH")
+            if clen and clen.isdigit() and int(clen) > MAX_API_BYTES:
+                return JsonResponse({"detail": "PAYLOAD_TOO_LARGE"}, status=413)

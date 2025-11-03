@@ -21,10 +21,30 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, constr
-
+from fastapi.middleware.cors import CORSMiddleware
+import os
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 
 app = FastAPI(title="Payments Service")
+allowed = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS","").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed or [],   # en prod: explícitos; no uses "*"
+    allow_credentials=False,
+    allow_methods=["GET","POST","OPTIONS"],
+    allow_headers=["*"],           # si quieres, lista fina como en Django
+)
+# guard limit
+MAX_API_BYTES = int(os.getenv("API_MAX_BYTES", str(1 * 1024 * 1024)))
+
+@app.middleware("http")
+async def body_limit_mw(request: Request, call_next):
+    clen = request.headers.get("content-length")
+    if clen and clen.isdigit() and int(clen) > MAX_API_BYTES:
+        return JSONResponse({"detail": "PAYLOAD_TOO_LARGE"}, status_code=413)
+    return await call_next(request)
 
 Currency = constr(pattern=r"^[A-Z]{3}$")
 

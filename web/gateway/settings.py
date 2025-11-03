@@ -13,6 +13,8 @@ import os
 import sys
 from pathlib import Path
 from pythonjsonlogger import jsonlogger
+from urllib.parse import urlparse
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -51,6 +53,7 @@ INSTALLED_APPS = [
 THIRD_PARTY_APPS = [
     'rest_framework',
     'django_redis',
+    'corsheaders',
 ]
 
 INSTALLED_APPS += DOMAIN_APPS
@@ -62,6 +65,8 @@ PROJECT_MIDDLEWARE = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    "corsheaders.middleware.CorsMiddleware",
+    "gateway.middleware.ApiSizeLimitMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -225,3 +230,48 @@ CACHES = {
 }
 # (opcional) usar un alias específico para throttling
 THROTTLE_DEFAULT_CACHE = "default"
+
+# CORS
+# Origins permitidos (coma-separados). Ej: "https://mi-frontend.com,https://admin.mi-frontend.com"
+CORS_ALLOWED_ORIGINS = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
+CORS_ALLOW_CREDENTIALS = False  # si no usas cookies/sesión desde front
+CORS_ALLOW_HEADERS = list({
+    "accept", "accept-encoding", "authorization", "content-type",
+    "origin", "x-csrftoken", "x-requested-with",
+    "idempotency-key", "request-id"   # <- cabeceras propias
+})
+# Opcional: limitar a rutas API
+CORS_URLS_REGEX = r"^/api/.*$"
+
+# security
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))  # p.ej. 31536000 en prod
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# Redirect a HTTPS (solo si hay TLS delante)
+SECURE_SSL_REDIRECT = bool(int(os.getenv("SECURE_SSL_REDIRECT", "0")))
+
+# Cookies seguras
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+# Otras cabeceras de seguridad
+SECURE_REFERRER_POLICY = "same-origin"
+X_FRAME_OPTIONS = "DENY"
+
+# COOP ya lo estabas enviando desde Django (si no, añade):
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
+
+
+# content-security-policy (CSP)
+CSP_DEFAULT_SRC = ("'none'",)
+CSP_FRAME_ANCESTORS = ("'none'",)
+CSP_CONNECT_SRC = ("'self'",)   # si la API es consumida por front, añade su dominio
+# Si sirves estáticos desde el mismo dominio:
+CSP_SCRIPT_SRC = ("'self'",)
+CSP_STYLE_SRC = ("'self'",)
+CSP_IMG_SRC = ("'self'", "data:")
+
+# limit request size
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(1 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(1 * 1024 * 1024)))

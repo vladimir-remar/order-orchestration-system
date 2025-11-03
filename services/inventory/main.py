@@ -16,8 +16,31 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, constr
 from typing import List
 from repo import InventoryRepo  # Uses SQLAlchemy and the `inventory-db` database
+from fastapi.middleware.cors import CORSMiddleware
+import os
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
 
 app = FastAPI(title="Inventory Service")
+allowed = [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS","").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed or [],   # en prod: explícitos; no uses "*"
+    allow_credentials=False,
+    allow_methods=["GET","POST","OPTIONS"],
+    allow_headers=["*"],           # si quieres, lista fina como en Django
+)
+
+MAX_API_BYTES = int(os.getenv("API_MAX_BYTES", str(1 * 1024 * 1024)))
+
+@app.middleware("http")
+async def body_limit_mw(request: Request, call_next):
+    clen = request.headers.get("content-length")
+    if clen and clen.isdigit() and int(clen) > MAX_API_BYTES:
+        return JSONResponse({"detail": "PAYLOAD_TOO_LARGE"}, status_code=413)
+    return await call_next(request)
+
 
 Sku = constr(pattern=r"^[A-Z0-9_-]{3,32}$")
 # logger JSON
