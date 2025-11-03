@@ -34,6 +34,7 @@ from django.core.paginator import Paginator
 from django.http import Http404
 from .models import OrderModel
 from .schemas import OrderReadDTO
+from rest_framework.throttling import ScopedRateThrottle
 
 
 class OrdersPingView(APIView):
@@ -66,7 +67,15 @@ class OrdersCollectionView(APIView):
     payload return the cached response with HTTP 200. Reusing the same key
     with a different payload returns HTTP 409.
     """
+    throttle_classes = [ScopedRateThrottle]
+    
+    def get_throttles(self):
+        # DRF evalúa los throttles en initial(), antes de get/post
+        self.throttle_scope = "orders_list" if self.request.method == "GET" else "orders_create"
+        return [throttle() for throttle in self.throttle_classes]
+    
     def get(self, request):
+        
         qs = OrderModel.objects.order_by("-created_at")
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 20))
@@ -116,7 +125,6 @@ class OrdersCollectionView(APIView):
             - 503 with {detail: "UPSTREAM_UNAVAILABLE"} when upstream
               services are unavailable.
         """
-
         idem_key = request.headers.get("Idempotency-Key")
 
         # 1) Pydantic validation
@@ -186,6 +194,9 @@ class OrdersCollectionView(APIView):
         return Response(body, status=status.HTTP_201_CREATED)
     
 class RetrieveOrderView(APIView):
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "orders_detail"
+
     def get(self, request, oid: str):
         try:
             o = OrderModel.objects.get(id=oid)

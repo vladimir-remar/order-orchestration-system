@@ -50,6 +50,7 @@ INSTALLED_APPS = [
 
 THIRD_PARTY_APPS = [
     'rest_framework',
+    'django_redis',
 ]
 
 INSTALLED_APPS += DOMAIN_APPS
@@ -194,3 +195,33 @@ if "pytest" in sys.modules:
     HTTP_RETRY_MAX = 2
     HTTP_RETRY_BACKOFF_BASE = 0.01
     HTTP_RETRY_MAX_SLEEP = 0.02
+
+# THROTTLING
+REST_FRAMEWORK = {
+    # …
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.ScopedRateThrottle",
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        # globales
+        "anon": "100/min",    # tráfico anónimo total
+        "user": "600/min",    # si algún día autenticamos
+        # scopes
+        "orders_create": "10/min",   # POST /api/orders/ (crear)
+        "orders_list": "120/min",    # GET /api/orders/
+        "orders_detail": "300/min",  # GET /api/orders/<id>/
+    },
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://redis:6379/1"),
+        "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        "KEY_PREFIX": "ordersvc",
+    }
+}
+# (opcional) usar un alias específico para throttling
+THROTTLE_DEFAULT_CACHE = "default"

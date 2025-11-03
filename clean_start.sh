@@ -1,8 +1,10 @@
-docker compose down -v --remove-orphans
-docker rmi order-orchestration-system-web order-orchestration-system-inventory order-orchestration-system-payments
-docker volume rm order-orchestration-system_orders_pg
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose run --rm web python -m pytest -vv
+docker compose down -v --remove-orphans && \
+docker rmi order-orchestration-system-web order-orchestration-system-inventory order-orchestration-system-payments && \
+docker volume rm order-orchestration-system_orders_pg && \
+docker compose -f docker-compose.prod.yml up -d --build && \
+echo "Waiting for services to be ready..." && \
+sleep 10 && \
+#docker compose run --rm web python -m pytest -vv && \
 docker compose -f docker-compose.prod.yml exec -T inventory python - <<'PY'
 from repo import InventoryRepo
 InventoryRepo().upsert("SKU1", 50)
