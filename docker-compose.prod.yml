@@ -1,47 +1,32 @@
-
 services:
+  # ===== Databases =====
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: orders
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: urcl6e5qlqqvgl1
+      POSTGRES_USER: orders_user
+      POSTGRES_PASSWORD: orders_user_pass
+    volumes:
+      - orders_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d orders"]
+      test: ["CMD-SHELL", "pg_isready -U orders_user -d orders"]
       interval: 3s
       timeout: 3s
       retries: 10
 
-  web:
-    build:
-      context: ./web
-      dockerfile: Dockerfile.prod
-    env_file:
-      - ./web/.env.prod
-    ports:
-      - "8000:8000"
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 6
-      start_period: 10s
   inventory-db:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: inventory
       POSTGRES_USER: inventory_user
       POSTGRES_PASSWORD: inventory-pass
+    volumes:
+      - inventory_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U inventory_user -d inventory"]
       interval: 3s
       timeout: 3s
       retries: 10
-    ports:
-      - "5434:5432"
 
   payments-db:
     image: postgres:16-alpine
@@ -49,14 +34,15 @@ services:
       POSTGRES_DB: payments
       POSTGRES_USER: payments_user
       POSTGRES_PASSWORD: payments-pass
+    volumes:
+      - payments_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U payments_user -d payments"]
       interval: 3s
       timeout: 3s
       retries: 10
-    ports:
-      - "5435:5432"
 
+  # ===== Microservicios =====
   inventory:
     build:
       context: ./services/inventory
@@ -69,11 +55,11 @@ services:
     ports:
       - "9001:9001"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9001/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys,socket; socket.setdefaulttimeout(2); urllib.request.urlopen('http://localhost:9001/health').read(); print('OK')\" || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 6
-      start_period: 10s
+      start_period: 15s
 
   payments:
     build:
@@ -87,8 +73,36 @@ services:
     ports:
       - "9002:9002"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9002/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys,socket; socket.setdefaulttimeout(2); urllib.request.urlopen('http://localhost:9002/health').read(); print('OK')\" || exit 1"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 6
-      start_period: 10s
+      start_period: 15s
+
+  # ===== Web (Django) =====
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.prod
+    env_file:
+      - ./web/.env.prod
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+      payments:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys,socket; socket.setdefaulttimeout(2); urllib.request.urlopen('http://localhost:8000/health/').read(); print('OK')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+
+volumes:
+  orders_pg:
+  inventory_pg:
+  payments_pg:

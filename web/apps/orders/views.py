@@ -30,6 +30,10 @@ from .idempotency import get_or_create_idempotent, finalize
 from .providers import get_order_service
 from .http_adapters import HttpPaymentsClient
 from django.conf import settings
+from django.core.paginator import Paginator
+from django.http import Http404
+from .models import OrderModel
+from .schemas import OrderReadDTO
 
 
 class OrdersPingView(APIView):
@@ -51,7 +55,7 @@ class OrdersPingView(APIView):
         return Response({"ok": True})
 
 
-class CreateOrderView(APIView):
+class OrdersCollectionView(APIView):
     """Create an order by orchestrating inventory and payment.
 
     This view validates the payload using a Pydantic DTO, calls the domain
@@ -62,6 +66,33 @@ class CreateOrderView(APIView):
     payload return the cached response with HTTP 200. Reusing the same key
     with a different payload returns HTTP 409.
     """
+    def get(self, request):
+        qs = OrderModel.objects.order_by("-created_at")
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 20))
+        p = Paginator(qs, page_size)
+        page_obj = p.get_page(page)
+
+        results = []
+        for o in page_obj.object_list:
+            dto = OrderReadDTO(
+                id=o.id,
+                status=o.status,
+                amount_cents=o.total_cents,   # <- clave
+                currency=o.currency,
+                transaction_id=o.transaction_id,
+            )
+            results.append(dto.model_dump(exclude_none=True))
+
+        return Response(
+            {
+                "count": p.count,
+                "page": page_obj.number,
+                "page_size": page_size,
+                "results": results,
+            },
+            status=200,
+        )
 
     def post(self, request):
         """Create a new order.
@@ -153,3 +184,19 @@ class CreateOrderView(APIView):
             return Response(body, status=status.HTTP_201_CREATED)
 
         return Response(body, status=status.HTTP_201_CREATED)
+    
+class RetrieveOrderView(APIView):
+    def get(self, request, oid: str):
+        try:
+            o = OrderModel.objects.get(id=oid)
+        except OrderModel.DoesNotExist:
+            return Response({"detail": "NOT_FOUND"}, status=status.HTTP_404_NOT_FOUND)
+
+        dto = OrderReadDTO.model_validate({
+            "id": str(o.id),
+            "status": o.status,
+            "amount_cents": o.total_cents,
+            "currency": o.currency,
+            "transaction_id": (str(o.transaction_id) if o.transaction_id else None),
+        })
+        return Response(dto.model_dump(by_alias=True, exclude_none=True), status=200)

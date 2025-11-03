@@ -5,8 +5,9 @@ orders API and service layer.
 """
 
 import re
+import uuid
 from pydantic import BaseModel, Field, field_validator
-
+from typing import Optional
 
 SKU_RE = re.compile(r"^[A-Z0-9_-]{3,32}$")
 CURRENCIES = {"EUR", "USD", "GBP"}
@@ -76,3 +77,15 @@ class CreateOrderDTO(BaseModel):
         if v2 not in CURRENCIES:
             raise ValueError("Unsupported currency")
         return v2
+
+
+
+class OrderReadDTO(BaseModel):
+    id: uuid.UUID
+    status: str
+    amount_cents: int
+    currency: str
+    transaction_id: Optional[uuid.UUID] = None
+
+    class Config:
+        populate_by_name = True
