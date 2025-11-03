@@ -14,13 +14,19 @@ import hashlib, json
 from contextlib import contextmanager
 from typing import Optional
 
-from sqlalchemy import create_engine, Integer, String, Boolean, BigInteger, select
+from sqlalchemy import create_engine, Integer, String, Boolean, BigInteger, select, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Session
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.types import LargeBinary
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://app:app@payments-db:5432/payments")
+DB_HOST = os.getenv("DB_HOST", "payments-db")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "payments")
+DB_USER = os.getenv("DB_USER", "payments_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "payments-pass")
+
+DATABASE_URL = f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 class Base(DeclarativeBase):
@@ -153,6 +159,3 @@ class PaymentsRepo:
             s.commit()
             return tx.id  # UUID
 
-def init_db():
-    # crea tablas si no existen
-    Base.metadata.create_all(engine)

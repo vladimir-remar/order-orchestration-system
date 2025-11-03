@@ -10,10 +10,16 @@ quantity. Database connection parameters are configured via DATABASE_URL env var
 
 import os
 from contextlib import contextmanager
-from sqlalchemy import create_engine, Integer, String
+from sqlalchemy import create_engine, Integer, String, text
 from sqlalchemy.orm import DeclarativeBase, mapped_column, Session
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://app:app@inventory-db:5432/inventory")
+DB_HOST = os.getenv("DB_HOST", "inventory-db")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "inventory")
+DB_USER = os.getenv("DB_USER", "inventory_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "inventory-pass")
+
+DATABASE_URL = f"postgresql+psycopg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 class Base(DeclarativeBase): pass
@@ -29,9 +35,6 @@ class Stock(Base):
     sku = mapped_column(String(64), primary_key=True)
     quantity = mapped_column(Integer, nullable=False, default=0)
 
-def init_db():
-    # crea tablas si no existen
-    Base.metadata.create_all(engine)
 
 @contextmanager
 def get_session():

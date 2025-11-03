@@ -102,7 +102,11 @@ class CreateOrderView(APIView):
             except ValueError:
                 return Response({"detail": "IDEMPOTENCY_CONFLICT"}, status=status.HTTP_409_CONFLICT)
             if existing:
-                return Response(rec.response_body, status=200)
+                # return Response(rec.response_body, status=200)
+                status_code = rec.response_status or status.HTTP_200_OK
+                resp = Response(rec.response_body, status=status_code)
+                resp["Idempotent-Replay"] = "true"
+                return resp
 
         # 3) Domain
         items = [OrderItem(sku=i.sku, quantity=i.quantity) for i in dto.items]

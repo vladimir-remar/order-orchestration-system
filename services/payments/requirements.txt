@@ -1,7 +1,8 @@
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
 SQLAlchemy
 psycopg[binary]
 pytest
 python-json-logger
+alembic

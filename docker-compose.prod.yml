@@ -1,0 +1,94 @@
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: urcl6e5qlqqvgl1
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d orders"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.prod
+    env_file:
+      - ./web/.env.prod
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+  inventory-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: inventory
+      POSTGRES_USER: inventory_user
+      POSTGRES_PASSWORD: inventory-pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory_user -d inventory"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5434:5432"
+
+  payments-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: payments_user
+      POSTGRES_PASSWORD: payments-pass
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payments_user -d payments"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5435:5432"
+
+  inventory:
+    build:
+      context: ./services/inventory
+      dockerfile: Dockerfile.prod
+    env_file:
+      - ./services/inventory/.env.prod
+    depends_on:
+      inventory-db:
+        condition: service_healthy
+    ports:
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9001/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
+  payments:
+    build:
+      context: ./services/payments
+      dockerfile: Dockerfile.prod
+    env_file:
+      - ./services/payments/.env.prod
+    depends_on:
+      payments-db:
+        condition: service_healthy
+    ports:
+      - "9002:9002"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9002/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s

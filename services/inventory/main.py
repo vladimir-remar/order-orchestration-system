@@ -9,7 +9,7 @@ SQLAlchemy-backed repository in ``repo.InventoryRepo``.
 import uuid, logging
 import time
 from sqlalchemy import text
-from repo import InventoryRepo, init_db, engine
+from repo import InventoryRepo, engine
 from fastapi import Request
 from pythonjsonlogger import jsonlogger
 from fastapi import FastAPI, HTTPException
@@ -31,7 +31,7 @@ if not logger.handlers:
 @app.on_event("startup")
 def _startup_db():
     # espera activa breve hasta que la DB acepte conexiones
-    deadline = time.time() + 30  # 30s
+    deadline = time.time() + 30
     while True:
         try:
             with engine.connect() as conn:
@@ -41,7 +41,7 @@ def _startup_db():
             if time.time() > deadline:
                 raise
             time.sleep(1)
-    init_db()
+    # crea tablas de forma serializada entre workers
 
 class Item(BaseModel):
     """An item to be reserved from inventory.

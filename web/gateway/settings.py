@@ -181,3 +181,16 @@ LOGGING = {
     },
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# HTTP CONTROL
+HTTP_CIRCUIT_FAIL_THRESHOLD = int(os.environ.get("HTTP_CIRCUIT_FAIL_THRESHOLD", 5))
+HTTP_CIRCUIT_RESET_TIMEOUT = float(os.environ.get("HTTP_CIRCUIT_RESET_TIMEOUT", 30.0))  # segundos
+HTTP_TIMEOUT_SECS = float(os.environ.get("HTTP_TIMEOUT_SECS", 3.0))
+HTTP_RETRY_MAX = int(os.environ.get("HTTP_RETRY_MAX", 3))
+HTTP_RETRY_BACKOFF_BASE = float(os.environ.get("HTTP_RETRY_BACKOFF_BASE", 0.15))
+HTTP_RETRY_MAX_SLEEP = float(os.environ.get("HTTP_RETRY_MAX_SLEEP", 0.5))
+
+if "pytest" in sys.modules:
+    HTTP_RETRY_MAX = 2
+    HTTP_RETRY_BACKOFF_BASE = 0.01
+    HTTP_RETRY_MAX_SLEEP = 0.02

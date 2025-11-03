@@ -9,7 +9,7 @@ import uuid
 import logging
 import time
 from sqlalchemy import text
-from repo import init_db, engine
+from repo import engine
 
 from fastapi import Request
 from pythonjsonlogger import jsonlogger
@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field, constr
 app = FastAPI(title="Payments Service")
 
 Currency = constr(pattern=r"^[A-Z]{3}$")
+
 @app.on_event("startup")
 def _startup_db():
     # espera activa breve hasta que la DB acepte conexiones
@@ -40,7 +41,6 @@ def _startup_db():
             if time.time() > deadline:
                 raise
             time.sleep(1)
-    init_db()
 
 
 logger = logging.getLogger("payments")
